@@ -18,38 +18,71 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Definiere öffentliche Pfade, die keine Authentifizierung erfordern
-  // Die Landing Page ist immer öffentlich zugänglich.
   const publicPaths = ['/', '/login']; 
+  const isPublicPath = publicPaths.includes(pathname);
 
-  // Prüfe, ob der aktuelle Pfad ein öffentlicher Pfad ist (vereinfacht, da / immer erlaubt ist)
-  const isLoginPage = pathname === '/login';
-  const isRootPage = pathname === '/';
-
-  // --- Schutz für geschützte Seiten --- 
-  // Wenn der Benutzer nicht eingeloggt ist UND versucht, eine Seite aufzurufen, 
-  // die weder die Landing Page ('/') noch die Login-Seite ('/login') ist,
-  // leite ihn zur Login-Seite um.
-  if (!session && !isRootPage && !isLoginPage) { 
+  // Wenn der Benutzer nicht eingeloggt ist und versucht, auf eine geschützte Seite zuzugreifen
+  if (!session && !isPublicPath) { 
     console.log(`Middleware: No session found for protected path ${pathname}, redirecting to /login`);
     const redirectUrl = req.nextUrl.clone();
     redirectUrl.pathname = '/login';
-    redirectUrl.searchParams.set(`redirectedFrom`, pathname); 
     return NextResponse.redirect(redirectUrl);
   }
 
-  // --- Umleitung für eingeloggte Benutzer --- 
-  // Wenn der Benutzer eingeloggt ist UND versucht, die Login-Seite ('/login') aufzurufen,
-  // leite ihn zum Dashboard um. Zugriff auf die Landing Page ('/') wird erlaubt.
-  if (session && isLoginPage) {
-    console.log(`Middleware: Session found, redirecting from /login to /dashboard`);
+  // Wenn der Benutzer eingeloggt ist und versucht, auf die Login-Seite zuzugreifen
+  if (session && pathname === '/login') {
+    console.log(`Middleware: Session found, redirecting from /login to appropriate dashboard`);
+    const userRole = session.user?.user_metadata?.role || 'teilnehmer';
     const redirectUrl = req.nextUrl.clone();
-    redirectUrl.pathname = '/dashboard'; 
+    
+    if (userRole === 'admin') {
+      redirectUrl.pathname = '/dashboard';
+    } else if (userRole === 'trainer') {
+      redirectUrl.pathname = '/trainer-dashboard';
+    } else {
+      redirectUrl.pathname = '/teilnehmer/dashboard';
+    }
+    
     return NextResponse.redirect(redirectUrl);
   }
 
-  // Wenn keine der obigen Bedingungen zutrifft, erlaube den Zugriff auf die angeforderte Seite.
-  // Dies beinhaltet den Zugriff auf '/' für eingeloggte Benutzer und den Zugriff
-  // auf geschützte Seiten für eingeloggte Benutzer.
+  // Rollenbasierte Zugriffskontrolle für eingeloggte Benutzer
+  if (session) {
+    const userRole = session.user?.user_metadata?.role || 'teilnehmer';
+    
+    // Admin-Bereiche, die nur für Administratoren zugänglich sind
+    const adminOnlyPaths = ['/admin', '/kurse', '/trainer'];
+    const isAdminOnlyPath = adminOnlyPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
+    
+    // Dashboard-Pfad
+    const isDashboardPath = pathname === '/dashboard' || pathname.startsWith('/dashboard/');
+    
+    // Wenn ein Nicht-Admin versucht, auf Admin-Bereiche zuzugreifen
+    if (userRole !== 'admin' && (isAdminOnlyPath || isDashboardPath)) {
+      console.log(`Middleware: Non-admin user tried to access admin path ${pathname}`);
+      const redirectUrl = req.nextUrl.clone();
+      
+      if (userRole === 'trainer') {
+        redirectUrl.pathname = '/trainer-dashboard';
+      } else {
+        redirectUrl.pathname = '/teilnehmer/dashboard';
+      }
+      
+      return NextResponse.redirect(redirectUrl);
+    }
+    
+    // Wenn ein Teilnehmer versucht, auf Trainer-Bereiche zuzugreifen
+    const trainerPaths = ['/trainer-dashboard'];
+    const isTrainerPath = trainerPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
+    
+    if (userRole === 'teilnehmer' && isTrainerPath) {
+      console.log(`Middleware: Teilnehmer tried to access trainer path ${pathname}`);
+      const redirectUrl = req.nextUrl.clone();
+      redirectUrl.pathname = '/teilnehmer/dashboard';
+      return NextResponse.redirect(redirectUrl);
+    }
+  }
+
   return res;
 }
 
@@ -62,10 +95,6 @@ export const config = {
      * - _next/image (Bildoptimierungsdateien)
      * - favicon.ico (Favicon-Datei)
      * - /api/auth (Supabase Auth API Routen) 
-     * Passe dies bei Bedarf an (z.B. für öffentliche API-Endpunkte)
-     * 
-     * WICHTIG: Der Matcher muss ALLE Pfade abdecken, die von der Middleware-Logik betroffen sein könnten,
-     * also sowohl öffentliche als auch geschützte.
      */
     '/((?!_next/static|_next/image|favicon.ico|api/auth).*)',
   ],
