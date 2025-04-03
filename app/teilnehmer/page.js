@@ -84,15 +84,12 @@ export default function TeilnehmerPage() {
             
           if (kurseError) {
             console.error('Fehler beim Laden der Kurse:', kurseError);
-            setError('Kurse konnten nicht geladen werden. Bitte versuchen Sie es später erneut.');
-            kurseData = []; // Still continue with empty courses
-          } else {
-            kurseData = kurseResult || [];
-            console.log('Geladene Kurse:', kurseData);
+            throw kurseError;
           }
+          kurseData = kurseResult || [];
+          console.log('Geladene Kurse:', kurseData);
         } catch (kurseErr) {
           console.error('Fehler beim Laden der Kurse:', kurseErr);
-          setError('Kurse konnten nicht geladen werden. Bitte versuchen Sie es später erneut.');
           kurseData = [];
         }
         
